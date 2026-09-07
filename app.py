@@ -2,15 +2,22 @@ import streamlit as st
 import cv2
 import numpy as np
 import os
-import subprocess
 import sys
+import subprocess
 
-# ---------- DOWNLOAD MODELS FROM GOOGLE DRIVE ----------
+# ---------- 1. INSTALL GDOWN AT RUNTIME (if missing) ----------
+try:
+    import gdown
+except ImportError:
+    st.warning("Installing gdown for model download...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
+    import gdown
+
+# ---------- 2. DOWNLOAD MODELS FROM GOOGLE DRIVE ----------
 MODEL_DIR = "./models"
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-# Map your filenames to Google Drive FILE_IDs
-# CHANGE THESE IDs TO YOUR ACTUAL ONES!
+# CHANGE THESE FILE IDs TO YOUR ACTUAL GOOGLE DRIVE IDs!
 FILES_TO_DOWNLOAD = {
     "ShirorekhaNet_line.pth": "1611G4TwdgyB3zmCJqeeKfVgpEH99wbp6",    # Replace with your ID
     "AksharaNet_best.pth": "1n7AwHKf8tmaBYjUcYccpyKQoeicz-XRL",       # Replace with your ID
@@ -20,21 +27,17 @@ FILES_TO_DOWNLOAD = {
 def download_file(file_id, dest_path):
     """Download using gdown, only if file doesn't exist or is empty."""
     if os.path.exists(dest_path) and os.path.getsize(dest_path) > 1000:
-        return  # Already downloaded
+        return  # Already downloaded (cached)
     
-    try:
-        import gdown
-        print(f"📥 Downloading {os.path.basename(dest_path)} from Google Drive...")
+    with st.spinner(f"Downloading {os.path.basename(dest_path)}..."):
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, dest_path, quiet=False)
-    except Exception as e:
-        st.error(f"Failed to download {dest_path}: {e}")
 
 # Download all required files
 for filename, file_id in FILES_TO_DOWNLOAD.items():
     download_file(file_id, os.path.join(MODEL_DIR, filename))
 
-# ---------- LOAD OCR ENGINE ----------
+# ---------- 3. LOAD YOUR OCR ENGINE ----------
 from ocr_engine import SanskritOCREngine
 
 @st.cache_resource
@@ -43,7 +46,7 @@ def load_engine():
 
 engine = load_engine()
 
-# ---------- STREAMLIT UI ----------
+# ---------- 4. STREAMLIT UI ----------
 st.set_page_config(page_title="Sanskrit OCR", layout="centered")
 st.title("📜 Sanskrit OCR Demo")
 st.markdown("Upload a scanned printed Sanskrit page.")
