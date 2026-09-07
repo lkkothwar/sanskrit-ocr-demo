@@ -1,4 +1,13 @@
 import streamlit as st
+
+# ============================================
+# CRITICAL: set_page_config MUST be the FIRST Streamlit command!
+# ============================================
+st.set_page_config(page_title="Sanskrit OCR", layout="centered")
+
+# ============================================
+# NOW import everything else
+# ============================================
 import cv2
 import numpy as np
 import os
@@ -47,7 +56,6 @@ def load_engine():
 engine = load_engine()
 
 # ---------- 4. STREAMLIT UI ----------
-st.set_page_config(page_title="Sanskrit OCR", layout="centered")
 st.title("📜 Sanskrit OCR Demo")
 st.markdown("Upload a scanned printed Sanskrit page.")
 
