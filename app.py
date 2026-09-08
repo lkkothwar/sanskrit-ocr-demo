@@ -3,7 +3,7 @@ import streamlit as st
 # ============================================
 # CRITICAL: set_page_config MUST be the FIRST Streamlit command!
 # ============================================
-st.set_page_config(page_title="Sanskrit OCR", layout="centered")
+st.set_page_config(page_title="Sanskrit OCR", layout="wide")
 
 # ============================================
 # NOW import everything else
@@ -57,17 +57,42 @@ engine = load_engine()
 
 # ---------- 4. STREAMLIT UI ----------
 st.title("📜 Sanskrit OCR Demo")
-st.markdown("Upload a scanned printed Sanskrit page.")
+st.markdown("Upload a scanned printed Sanskrit page. The system will detect lines, recognize text, and show you the segmentation overlays.")
 
+# Sidebar for controls
+with st.sidebar:
+    st.header("Visualization Settings")
+    show_line_viz = st.checkbox("Show Line Segmentation Overlay", value=True)
+    show_word_viz = st.checkbox("Show Word Segmentation Overlay (slower)", value=False)
+    st.markdown("---")
+    st.caption("Made with ❤️ using PyTorch & Streamlit")
+
+# Main upload area
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
+    # Read image
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    st.image(img_bgr, channels="BGR", caption="Uploaded Image", width=400)
     
+    # Display original image
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.image(img_bgr, channels="BGR", caption="Uploaded Image", use_container_width=True)
+    
+    # Run inference
     with st.spinner("Recognizing Sanskrit text..."):
-        result = engine.process(img_bgr)
+        result = engine.process(img_bgr, show_line_viz=show_line_viz, show_word_viz=show_word_viz)
     
+    # Show visualizations
+    with col2:
+        if show_line_viz and result["line_viz"] is not None:
+            st.image(result["line_viz"], caption="Line Segmentation Overlay", use_container_width=True)
+        elif show_word_viz and result["word_viz"] is not None:
+            st.image(result["word_viz"], caption="Word Segmentation Overlay", use_container_width=True)
+        else:
+            st.info("No visualization selected. Enable them in the sidebar.")
+    
+    # Show recognized text
     st.success("Recognition Complete!")
-    st.text_area("Recognized Text", result["full_text"], height=300)
+    st.text_area("Recognized Sanskrit Text", result["full_text"], height=300, key="output_text")
