@@ -21,7 +21,6 @@ except ImportError:
     st.warning("Installing gdown for model download...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
     import gdown
-
 # ---------- 2. DOWNLOAD MODELS FROM GOOGLE DRIVE ----------
 MODEL_DIR = "./models"
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -83,20 +82,27 @@ if uploaded_file is not None:
     # Display original image
     col1, col2 = st.columns([1, 1])
     with col1:
-        # FIXED: use use_column_width instead of use_container_width
         st.image(img_bgr, channels="BGR", caption="Uploaded Image", use_column_width=True)
     
     # Run inference
     with st.spinner("Recognizing Sanskrit text..."):
         result = engine.process(img_bgr, show_line_viz=show_line_viz, show_word_viz=show_word_viz)
     
-    # Show visualizations
+    # ------------------------
+    # FIXED VISUALIZATION LOGIC
+    # ------------------------
     with col2:
-        if show_line_viz and result["line_viz"] is not None:
+        # Check if we have any visualizations to show
+        has_line = show_line_viz and result["line_viz"] is not None
+        has_word = show_word_viz and result["word_viz"] is not None
+        
+        if has_line:
             st.image(result["line_viz"], caption="Line Segmentation Overlay", use_column_width=True)
-        elif show_word_viz and result["word_viz"] is not None:
+        
+        if has_word:
             st.image(result["word_viz"], caption="Word Segmentation Overlay", use_column_width=True)
-        else:
+        
+        if not has_line and not has_word:
             st.info("No visualization selected. Enable them in the sidebar.")
     
     # Show recognized text
