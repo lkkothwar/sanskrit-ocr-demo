@@ -26,6 +26,10 @@ except ImportError:
 MODEL_DIR = "./models"
 os.makedirs(MODEL_DIR, exist_ok=True)
 
+# ---------- 2. DOWNLOAD MODELS FROM GOOGLE DRIVE ----------
+MODEL_DIR = "./models"
+os.makedirs(MODEL_DIR, exist_ok=True)
+
 # CHANGE THESE FILE IDs TO YOUR ACTUAL GOOGLE DRIVE IDs!
 FILES_TO_DOWNLOAD = {
     "ShirorekhaNet_line.pth": "1611G4TwdgyB3zmCJqeeKfVgpEH99wbp6",    # Replace with your ID
@@ -79,7 +83,8 @@ if uploaded_file is not None:
     # Display original image
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.image(img_bgr, channels="BGR", caption="Uploaded Image", use_container_width=True)
+        # FIXED: use use_column_width instead of use_container_width
+        st.image(img_bgr, channels="BGR", caption="Uploaded Image", use_column_width=True)
     
     # Run inference
     with st.spinner("Recognizing Sanskrit text..."):
@@ -88,9 +93,9 @@ if uploaded_file is not None:
     # Show visualizations
     with col2:
         if show_line_viz and result["line_viz"] is not None:
-            st.image(result["line_viz"], caption="Line Segmentation Overlay", use_container_width=True)
+            st.image(result["line_viz"], caption="Line Segmentation Overlay", use_column_width=True)
         elif show_word_viz and result["word_viz"] is not None:
-            st.image(result["word_viz"], caption="Word Segmentation Overlay", use_container_width=True)
+            st.image(result["word_viz"], caption="Word Segmentation Overlay", use_column_width=True)
         else:
             st.info("No visualization selected. Enable them in the sidebar.")
     
