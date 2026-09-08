@@ -29,6 +29,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 # CHANGE THESE FILE IDs TO YOUR ACTUAL GOOGLE DRIVE IDs!
 FILES_TO_DOWNLOAD = {
     "ShirorekhaNet_line.pth": "1611G4TwdgyB3zmCJqeeKfVgpEH99wbp6",    # Replace with your ID
+     "ShirorekhaNet_word.pth": "1C2qnDbpJmYtqiCSJcQanNer-C8HnV_hU",   # REPLACE WITH YOUR ID
     "AksharaNet_best.pth": "1n7AwHKf8tmaBYjUcYccpyKQoeicz-XRL",       # Replace with your ID
     "char_mapping.pkl": "1rbR5ebf4Jwfad2Vyzke1AtRAx1GCHaKw"           # Replace with your ID
 }
