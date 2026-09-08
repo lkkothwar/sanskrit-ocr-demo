@@ -166,11 +166,7 @@ class SanskritOCREngine:
         return cls._instance
 
     def _initialize(self, model_dir):
-        # CRITICAL: Force CPU for HF Spaces free tier. 
-        # If you later use a GPU Space, change this to 'cuda'.
         self.device = torch.device('cpu')
-        
-        # Prevent CPU thread oversubscription on shared HF runners
         torch.set_num_threads(1)
         print(f"[OCR] Loading models on {self.device}...")
 
@@ -183,35 +179,31 @@ class SanskritOCREngine:
 
         # Init models
         self.line_model = ShirorekhaNetFull(in_channels=4).to(self.device)
+        self.word_model = ShirorekhaNetFull(in_channels=4).to(self.device)  # Loaded for viz
         self.ocr_model = AksharaNet(vocab_size=vocab_size).to(self.device)
-        
-        # Optional: Word model (skip if you don't need visualisations)
-        # self.word_model = ShirorekhaNetFull(in_channels=4).to(self.device)
 
         # Load state dicts
         self._load_weights(self.line_model, os.path.join(model_dir, "ShirorekhaNet_line.pth"))
+        self._load_weights(self.word_model, os.path.join(model_dir, "ShirorekhaNet_word.pth"))
         self._load_weights(self.ocr_model, os.path.join(model_dir, "AksharaNet_best.pth"))
-        
-        # Set to eval mode
+
         self.line_model.eval()
+        self.word_model.eval()
         self.ocr_model.eval()
         print("[OCR] All models loaded successfully.")
 
     def _load_weights(self, model, path):
-        # Force map_location='cpu' to avoid CUDA errors on HF Spaces
         ckpt = torch.load(path, map_location=torch.device('cpu'), weights_only=False)
-        
         if isinstance(ckpt, dict) and 'model_state_dict' in ckpt:
             state = ckpt['model_state_dict']
         elif isinstance(ckpt, dict) and all(isinstance(k, str) and isinstance(v, torch.Tensor) for k, v in ckpt.items()):
             state = ckpt
         else:
             state = ckpt
-        # strict=False is safer if there are minor mismatches
         model.load_state_dict(state, strict=False)
 
     # -------------------------------
-    # 3. PREPROCESSING HELPERS (Paste yours here)
+    # 3. PREPROCESSING HELPERS
     # -------------------------------
     def _binarize(self, gray):
         return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -259,7 +251,7 @@ class SanskritOCREngine:
 
     def _greedy_decode(self, logits_np):
         preds = logits_np.argmax(axis=-1)
-        decoded, prev = [], 0  # blank idx = 0
+        decoded, prev = [], 0
         for idx in preds:
             idx = int(idx)
             if idx != 0 and idx != prev:
@@ -268,19 +260,90 @@ class SanskritOCREngine:
         return ''.join(decoded)
 
     # -------------------------------
-    # 4. MAIN INFERENCE LOOP
+    # 4. WORD SEGMENTATION HELPERS (for visualization)
     # -------------------------------
-    def process(self, image_bgr):
+    def _preprocess_line_crop(self, crop_bgr, target_h=64, target_w=512):
+        rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+        h, w = rgb.shape[:2]
+        scale = target_h / h
+        new_w = int(w * scale)
+        rgb_res = cv2.resize(rgb, (new_w, target_h), interpolation=cv2.INTER_AREA)
+        denoised = cv2.fastNlMeansDenoisingColored(rgb_res, None, 10, 10, 7, 21)
+        gray = cv2.cvtColor(denoised, cv2.COLOR_RGB2GRAY)
+        bin_4th = self._binarize(gray)
+        if new_w <= target_w:
+            pad = target_w - new_w
+            denoised = cv2.copyMakeBorder(denoised, 0,0,0,pad, cv2.BORDER_CONSTANT, value=(0,0,0))
+            bin_4th = cv2.copyMakeBorder(bin_4th, 0,0,0,pad, cv2.BORDER_CONSTANT, value=0)
+        else:
+            denoised = cv2.resize(denoised, (target_w, target_h))
+            bin_4th = cv2.resize(bin_4th, (target_w, target_h))
+            new_w = target_w
+        img_t = torch.from_numpy(denoised).permute(2,0,1).float() / 255.0
+        bin_t = torch.from_numpy(bin_4th).unsqueeze(0).float() / 255.0
+        input_t = torch.cat([img_t, bin_t], dim=0).unsqueeze(0).to(self.device)
+        return input_t, new_w
+
+    def _predict_word_mask(self, input_tensor, new_w, threshold=0.5):
+        with torch.no_grad():
+            logits = self.word_model(input_tensor)
+            if isinstance(logits, tuple): logits = logits[0]
+            probs = torch.sigmoid(logits)
+            mask = (probs > threshold).float().cpu().numpy()[0,0]
+        return mask[:, :new_w]
+
+    # -------------------------------
+    # 5. VISUALIZATION HELPERS (Exact Colab logic)
+    # -------------------------------
+    def _get_distinct_colors(self, n):
+        colors = []
+        for i in range(n):
+            hue = (i * 137.5) % 360
+            h = hue / 60.0
+            c = 1.0
+            x = c * (1 - abs(h % 2 - 1))
+            if h < 1:   r, g, b = c, x, 0
+            elif h < 2: r, g, b = x, c, 0
+            elif h < 3: r, g, b = 0, c, x
+            elif h < 4: r, g, b = 0, x, c
+            elif h < 5: r, g, b = x, 0, c
+            else:       r, g, b = c, 0, x
+            colors.append((int(r*255), int(g*255), int(b*255)))
+        return colors
+
+    def _apply_blended_overlay(self, base_img_rgb, overlay_rgb, alpha=0.4):
+        blended = base_img_rgb.copy().astype(np.float32)
+        base_float = base_img_rgb.astype(np.float32)
+        overlay_mask = (overlay_rgb.sum(axis=2) > 0)
+        blended[overlay_mask] = (base_float[overlay_mask] * (1 - alpha) + overlay_rgb[overlay_mask].astype(np.float32) * alpha)
+        return np.clip(blended, 0, 255).astype(np.uint8)
+
+    # -------------------------------
+    # 6. MAIN PROCESSING PIPELINE (with Visualizations)
+    # -------------------------------
+    def process(self, image_bgr, show_line_viz=False, show_word_viz=False):
         h_orig, w_orig = image_bgr.shape[:2]
         rgb_orig = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        # Stage 1: Line Segmentation
+        # --- Stage 1: Line Segmentation ---
         line_input, _ = self._preprocess_full_page(rgb_orig, target_size=512)
         line_mask_512 = self._predict_line_mask(line_input, threshold=0.5)
         line_contours, _ = self._get_line_contours(line_mask_512, (h_orig, w_orig))
 
-        # Stage 2: OCR per line
+        # --- Prepare Line Visualization ---
+        line_viz_rgb = None
+        if show_line_viz:
+            line_overlay = np.zeros((h_orig, w_orig, 3), dtype=np.uint8)
+            line_colors = self._get_distinct_colors(len(line_contours))
+            for i, cnt in enumerate(line_contours):
+                cv2.drawContours(line_overlay, [cnt], -1, line_colors[i], thickness=cv2.FILLED)
+            line_viz_rgb = self._apply_blended_overlay(rgb_orig, line_overlay, alpha=0.4)
+
+        # --- Stage 2: OCR per line ---
         results = []
+        line_crops = []
+        line_masks = []
+        
         for cnt in line_contours:
             x, y, w, h = cv2.boundingRect(cnt)
             y1, y2 = max(0, y-3), min(h_orig, y+h+3)
@@ -291,6 +354,10 @@ class SanskritOCREngine:
             cv2.drawContours(line_mask_roi, [cnt], -1, 255, -1)
             line_mask_crop = line_mask_roi[y1:y2, x1:x2]
 
+            # Store for word viz later
+            line_crops.append((crop_original, y1, y2, x1, x2, line_mask_crop))
+
+            # OCR
             img_t, mask_t = self._preprocess_line_for_ocr(crop_original, line_mask_crop)
             with torch.no_grad():
                 logits = self.ocr_model(img_t, mask_t)
@@ -298,7 +365,41 @@ class SanskritOCREngine:
             text = self._greedy_decode(logits_np)
             results.append(text)
 
+        # --- Stage 3: Word Segmentation Visualization (Optional) ---
+        word_viz_rgb = None
+        if show_word_viz:
+            combined_word_overlay = np.zeros((h_orig, w_orig, 3), dtype=np.uint8)
+            for crop_original, y1, y2, x1, x2, line_mask_crop in line_crops:
+                # Cleaned crop (background removed) for word segmentation
+                crop_clean = cv2.bitwise_and(crop_original, crop_original, mask=line_mask_crop)
+                word_input, new_w = self._preprocess_line_crop(crop_clean)
+                word_mask_raw = self._predict_word_mask(word_input, new_w, threshold=0.5)
+                if word_mask_raw.sum() == 0:
+                    word_mask_raw = self._predict_word_mask(word_input, new_w, threshold=0.3)
+                
+                word_mask_binary = (word_mask_raw > 0.5).astype(np.uint8) * 255
+                pred_word_cnts, _ = cv2.findContours(word_mask_binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                pred_word_cnts = [wc for wc in pred_word_cnts if cv2.contourArea(wc) > 20]
+                
+                h_crop, w_crop = crop_clean.shape[:2]
+                line_word_canvas = np.zeros((h_crop, w_crop, 3), dtype=np.uint8)
+                scale_x, scale_y = w_crop / new_w, h_crop / 64
+                word_colors = self._get_distinct_colors(len(pred_word_cnts))
+                for j, wc in enumerate(pred_word_cnts):
+                    scaled_wc = (wc.astype(np.float32) * np.array([scale_x, scale_y])).astype(np.int32)
+                    cv2.drawContours(line_word_canvas, [scaled_wc], -1, word_colors[j], thickness=cv2.FILLED)
+                
+                mask_words = (line_word_canvas.sum(axis=2) > 0)
+                for c_idx in range(3):
+                    combined_word_overlay[y1:y1+h_crop, x1:x1+w_crop, c_idx] = np.where(
+                        mask_words, line_word_canvas[..., c_idx],
+                        combined_word_overlay[y1:y1+h_crop, x1:x1+w_crop, c_idx])
+            
+            word_viz_rgb = self._apply_blended_overlay(rgb_orig, combined_word_overlay, alpha=0.4)
+
         return {
             "lines": results,
-            "full_text": "\n".join(results)
+            "full_text": "\n".join(results),
+            "line_viz": line_viz_rgb,
+            "word_viz": word_viz_rgb
         }
