@@ -4,17 +4,12 @@ Go to your GitHub repository.
 Click Code → Codespaces → Create codespace on main.
 
 2. Install Dependencies
-In the Codespaces terminal:
+   
+   In the Codespaces terminal :  pip install -r requirements.txt
 
-bash
-pip install -r requirements.txt
+3. Run the App :  streamlit run app.py
 
-3. Run the App
-bash
-streamlit run app.py
-
-5. Make the Port Public
-Click the Ports tab (next to the Terminal).
+5. Make the Port Public :  Click the Ports tab (next to the Terminal).
 
 Right-click on port 8501.
 
