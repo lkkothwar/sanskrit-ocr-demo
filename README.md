@@ -1,22 +1,33 @@
-1. Open a Codespace
-Go to your GitHub repository.
+**Scenario A: Fresh Start in a New Codespace / New Machine**
+# 1. Navigate to the workspace (Codespaces auto-opens here, but just in case)
+cd /workspaces/sanskrit-ocr-demo
 
-Click Code → Codespaces → Create codespace on main.
+# 2. (Optional) Verify Python version — should be 3.9 or higher
+python --version
 
-2. Install Dependencies
-   
-   In the Codespaces terminal :  pip install -r requirements.txt
+# 3. (Optional) Upgrade pip to the latest version
+pip install --upgrade pip
 
-3. Run the App :  streamlit run app.py
+# 4. Install all project dependencies from requirements.txt
+#    (This installs PyTorch CPU, Streamlit, OpenCV, numpy, Pillow, gdown, etc.)
+pip install -r requirements.txt
 
-5. Make the Port Public :  Click the Ports tab (next to the Terminal).
+# 5. (Optional) Verify that the key packages installed correctly
+pip show torch streamlit opencv-python-headless gdown
 
-Right-click on port 8501.
+# 6. (Optional) Check that the models folder exists; it will be auto-created
+#    at runtime if missing, but you can create it manually:
+mkdir -p models
 
-Select Port Visibility → Public.
+# 7. Launch the Streamlit app
+streamlit run app.py
 
-Copy the generated public URL (e.g., https://automatic-goldfish-xxxx-8501.app.github.dev/).
+**Scenario B: Resuming After Codespace Auto-Stop**
+# 1. Navigate to the workspace
+cd /workspaces/sanskrit-ocr-demo
 
-Share this URL — anyone can access your running demo while the Codespace is active.
+# 2. (Optional) Confirm models are still cached on disk
+ls -lh models/
 
-⚠️ Important: GitHub Codespaces automatically stops after 30 minutes of inactivity. Restart it and re-run streamlit run app.py to reactivate the link.
+# 3. Restart the app
+streamlit run app.py
