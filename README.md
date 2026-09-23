@@ -8,10 +8,12 @@ In the Codespaces terminal:
 
 bash
 pip install -r requirements.txt
+
 3. Run the App
 bash
 streamlit run app.py
-4. Make the Port Public
+
+5. Make the Port Public
 Click the Ports tab (next to the Terminal).
 
 Right-click on port 8501.
